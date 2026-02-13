@@ -339,7 +339,7 @@
             };
 
             const copyToClipboard = (text) => {
-                navigator.clipboard.writeText(text).then(() => alert('連結已複製！此連結 30 天後會自動失效。'));
+                navigator.clipboard.writeText(text).then(() => alert('連結已複製！30 天後自動失效。'));
             };
 
             return (
@@ -361,7 +361,7 @@
                                 <button onClick={() => copyToClipboard(generateTimeLimitedLink(30))} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
                                     <LinkIcon size={16}/> 複製 30天有效連結
                                 </button>
-                                <p className="text-[10px] text-emerald-600/60 mt-2 text-center">30天後連結會自動變回一般登入頁</p>
+                                <p className="text-[10px] text-emerald-600/60 mt-2 text-center">30天後連結自動變回一般登入頁</p>
                             </div>
 
                             <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
@@ -529,7 +529,7 @@
                   </div>
                   <div className="flex flex-col">
                       <div className="flex items-center gap-2">
-                          <p className="text-[10px] text-slate-400 font-bold uppercase">HI, WELCOME</p>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase">System User</p>
                           {/* 內頁季別切換 (顯示月份) - 依據 ENABLE_PRE_SCHEDULE 決定是否顯示 */}
                           {ENABLE_PRE_SCHEDULE && (
                               <button 
@@ -601,7 +601,7 @@
                         {isSyncing ? '資料載入中' : '查無資料'}
                     </p>
                     <p className="text-sm text-slate-300 mt-1">
-                        {isSyncing ? '請稍候' : (seasonType === 'view' ? `${seasonLabels.current} 沒有排班，好好休息` : `${seasonLabels.next} 沒有排班或尚未開放查詢`)}
+                        {isSyncing ? '請稍候' : (seasonType === 'view' ? `${seasonLabels.current} 沒有排班，好好休息` : `${seasonLabels.next} 沒有排班，好好休息`)}
                     </p>
                   </div>
                 )}
