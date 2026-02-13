@@ -55,30 +55,17 @@
 
         const API_URL = "https://script.google.com/macros/s/AKfycbxjnNHK8QB8yW8rF_izV5SJBeZ0Go6KE13qzPX06d5knUV9VUK6WsPtI5h5n79ujPVFOA/exec";
         
-        // ★★★ 預設自動規則 (當沒有特殊連結時使用) ★★★
-        const AUTO_OPEN_MONTHS = [3, 6, 9, 12]; // 3,6,9,12月開放
-        const AUTO_OPEN_DAY = 1; // 每月1號開放
-
         // --- 核心權限判斷邏輯 ---
         const checkIsOpen = () => {
             if (typeof window === 'undefined') return false;
             
-            // 1. 優先檢查網址參數 ?mode=...
+            // 檢查網址參數 ?mode=...
             const params = new URLSearchParams(window.location.search);
             const mode = params.get('mode');
 
             if (mode === 'open') return true;   // 強制開啟
-            if (mode === 'close') return false; // 強制關閉
             
-            // 2. 自動日期判斷 (auto)
-            const now = new Date();
-            const currentMonth = now.getMonth() + 1;
-            const currentDay = now.getDate();
-
-            if (AUTO_OPEN_MONTHS.includes(currentMonth) && currentDay >= AUTO_OPEN_DAY) {
-                return true;
-            }
-            
+            // 預設關閉 (已刪除自動日期判斷)
             return false;
         };
 
@@ -355,16 +342,6 @@
                                     <LinkIcon size={16}/> 複製關閉連結
                                 </button>
                             </div>
-
-                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                <div className="flex justify-between items-center mb-2">
-                                    <span className="font-bold text-slate-700 flex items-center gap-2"><Clock size={16}/> 自動模式 (預設)</span>
-                                    <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">依日期自動</span>
-                                </div>
-                                <button onClick={() => copyToClipboard(baseUrl)} className="w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
-                                    <LinkIcon size={16}/> 複製原始連結
-                                </button>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -423,7 +400,7 @@
                   )}
 
                   <p className="text-slate-400 mt-4 font-medium text-sm">
-                    {seasonType === 'view' ? `查詢 ${seasonLabels.current} 服事班表` : `查詢 ${seasonLabels.next} 預排班表`}
+                    資料同步成功，再輸入完整姓名
                   </p>
                 </div>
 
