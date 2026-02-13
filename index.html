@@ -234,7 +234,6 @@
           const [peopleData, setPeopleData] = useState(DEFAULT_PEOPLE_DATA);
           const [statsData, setStatsData] = useState(DEFAULT_STATS);
           
-          // 修改 1：預設設為 true，避免一進入網頁時閃爍「查無資料」
           const [isSyncing, setIsSyncing] = useState(true);
           const [syncStatus, setSyncStatus] = useState('');
           const [progress, setProgress] = useState(0);
@@ -244,11 +243,7 @@
 
           useEffect(() => {
             const loadAllData = async () => {
-              // 修改 2：移除以下三行清空資料的程式碼
-              // 這樣在切換時，舊資料會保留在畫面上，直到新資料載入完成直接替換
-              // setScheduleData([]);
-              // setPeopleData([]);
-              // setStatsData({});
+              // 這裡保持不手動清空 data，因為我們會用 isSyncing 狀態來控制畫面顯示
               
               setIsSyncing(true);
               const seasonName = seasonType === 'view' ? seasonLabels.current : seasonLabels.next;
@@ -314,7 +309,8 @@
           const renderView = () => {
             switch (currentView) {
               case 'login': return <LoginView name={name} setName={setName} onLogin={handleLogin} loginError={loginError} isSyncing={isSyncing} syncStatus={syncStatus} progress={progress} seasonType={seasonType} setSeasonType={setSeasonType} seasonLabels={seasonLabels} />;
-              case 'mySchedule': return <MyScheduleView name={name} scheduleData={scheduleData} peopleData={peopleData} onLogout={handleLogout} onRequestSwap={(req) => { setSwapRequest(req); setCurrentView('swapSearch'); }} seasonType={seasonType} setSeasonType={setSeasonType} isSyncing={isSyncing} seasonLabels={seasonLabels} />;
+              // 傳遞 syncStatus 和 progress 給 MyScheduleView
+              case 'mySchedule': return <MyScheduleView name={name} scheduleData={scheduleData} peopleData={peopleData} onLogout={handleLogout} onRequestSwap={(req) => { setSwapRequest(req); setCurrentView('swapSearch'); }} seasonType={seasonType} setSeasonType={setSeasonType} isSyncing={isSyncing} syncStatus={syncStatus} progress={progress} seasonLabels={seasonLabels} />;
               case 'swapSearch': return <SwapSearchView name={name} scheduleData={scheduleData} peopleData={peopleData} statsData={statsData} onBack={() => setCurrentView('mySchedule')} onLogout={handleLogout} initialRequest={swapRequest} seasonType={seasonType} seasonLabels={seasonLabels} />;
               default: return <LoginView name={name} setName={setName} onLogin={handleLogin} />;
             }
@@ -475,7 +471,7 @@
           );
         }
 
-        function MyScheduleView({ name, scheduleData, peopleData, onLogout, onRequestSwap, seasonType, setSeasonType, isSyncing, seasonLabels }) {
+        function MyScheduleView({ name, scheduleData, peopleData, onLogout, onRequestSwap, seasonType, setSeasonType, isSyncing, syncStatus, progress, seasonLabels }) {
           const [flatShifts, setFlatShifts] = useState([]);
           const numberedRoles = ['接待', '收奉獻', '主餐', '新朋友關懷']; 
           
@@ -560,12 +556,6 @@
                 </button>
               </nav>
 
-              {isSyncing && (
-                  <div className="fixed top-[70px] left-0 w-full z-40 bg-yellow-50 px-4 py-2 text-center text-xs font-bold text-yellow-600 flex justify-center items-center gap-2 shadow-sm">
-                     <RefreshCw size={12} className="animate-spin" /> 切換資料中
-                  </div>
-              )}
-
               <main className="flex-grow p-4 sm:p-6 space-y-4 max-w-2xl mx-auto w-full">
                 <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -576,38 +566,58 @@
                     </div>
                 </div>
 
-                {flatShifts.length > 0 ? (
-                  flatShifts.map((shift, index) => {
-                    const rConfig = ROLE_CONFIG[shift.role] || ROLE_CONFIG['預設'];
-                    const textColorClass = rConfig.color.split(' ')[1] || 'text-slate-800';
-                    return (
-                      <div key={index} className="bg-white rounded-[1.5rem] p-5 shadow-sm border border-slate-200 flex items-center justify-between gap-4 animate-in fade-in transition-transform hover:scale-[1.01]" style={{animationDelay: `${index * 50}ms`}}>
-                        <div className="flex flex-col gap-1 flex-grow">
-                           <span className={`text-xl font-black tracking-tight leading-tight ${textColorClass} flex items-center gap-2`}>
-                             {shift.role}
-                             {shift.shiftNumber && <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-current text-xs font-bold shrink-0">{shift.shiftNumber}</span>}
-                           </span>
-                           <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-500">
-                              <div className="flex items-center gap-1.5"><Calendar size={14} className="text-slate-400"/><span>{shift.date}</span></div>
-                              <span className="text-slate-300">|</span><span className="bg-slate-100 px-2 py-0.5 rounded text-xs">{shift.session}</span>
-                           </div>
+                {isSyncing ? (
+                  <div className="flex flex-col items-center justify-center py-20 animate-in fade-in">
+                    <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100 w-full max-w-sm text-center">
+                        <div className="mb-4 relative mx-auto w-16 h-16">
+                             <svg className={`animate-spin w-full h-full ${seasonType === 'view' ? 'text-indigo-100' : 'text-emerald-100'}`} viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                             </svg>
+                             <div className={`absolute inset-0 flex items-center justify-center text-xs font-black ${seasonType === 'view' ? 'text-indigo-500' : 'text-emerald-500'}`}>{progress}%</div>
                         </div>
-                        <button onClick={() => onRequestSwap({ date: shift.date, role: shift.role, session: shift.rawSession, owner: name })} className="flex flex-col items-center justify-center gap-1 bg-white hover:bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl transition-all active:scale-95 border-2 border-emerald-100 flex-shrink-0 shadow-sm">
-                          <RefreshCw size={18} /><span className="text-[10px] font-bold">換班查詢</span>
-                        </button>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="text-center py-20 bg-white rounded-[2rem] border-2 border-dashed border-slate-200">
-                    <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300"><Briefcase size={40} /></div>
-                    <p className="text-slate-400 font-bold text-lg">
-                        {isSyncing ? '資料載入中' : '查無資料'}
-                    </p>
-                    <p className="text-sm text-slate-300 mt-1">
-                        {isSyncing ? '請稍候' : (seasonType === 'view' ? `${seasonLabels.current} 沒有排班，好好休息` : `${seasonLabels.next} 沒有排班或尚未開放查詢`)}
-                    </p>
+                        <h3 className="text-lg font-black text-slate-800 mb-2">{seasonType === 'view' ? '載入服事資料' : '載入預排資料'}</h3>
+                        <p className="text-sm text-slate-400 font-bold mb-6">{syncStatus || '資料讀取中...'}</p>
+                        
+                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                            <div className={`h-full rounded-full transition-all duration-300 ease-out ${seasonType === 'view' ? 'bg-indigo-500' : 'bg-emerald-500'}`} style={{ width: `${progress}%` }}></div>
+                        </div>
+                    </div>
                   </div>
+                ) : (
+                  flatShifts.length > 0 ? (
+                    flatShifts.map((shift, index) => {
+                      const rConfig = ROLE_CONFIG[shift.role] || ROLE_CONFIG['預設'];
+                      const textColorClass = rConfig.color.split(' ')[1] || 'text-slate-800';
+                      return (
+                        <div key={index} className="bg-white rounded-[1.5rem] p-5 shadow-sm border border-slate-200 flex items-center justify-between gap-4 animate-in fade-in transition-transform hover:scale-[1.01]" style={{animationDelay: `${index * 50}ms`}}>
+                          <div className="flex flex-col gap-1 flex-grow">
+                             <span className={`text-xl font-black tracking-tight leading-tight ${textColorClass} flex items-center gap-2`}>
+                               {shift.role}
+                               {shift.shiftNumber && <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-current text-xs font-bold shrink-0">{shift.shiftNumber}</span>}
+                             </span>
+                             <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-500">
+                                <div className="flex items-center gap-1.5"><Calendar size={14} className="text-slate-400"/><span>{shift.date}</span></div>
+                                <span className="text-slate-300">|</span><span className="bg-slate-100 px-2 py-0.5 rounded text-xs">{shift.session}</span>
+                             </div>
+                          </div>
+                          <button onClick={() => onRequestSwap({ date: shift.date, role: shift.role, session: shift.rawSession, owner: name })} className="flex flex-col items-center justify-center gap-1 bg-white hover:bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl transition-all active:scale-95 border-2 border-emerald-100 flex-shrink-0 shadow-sm">
+                            <RefreshCw size={18} /><span className="text-[10px] font-bold">換班查詢</span>
+                          </button>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="text-center py-20 bg-white rounded-[2rem] border-2 border-dashed border-slate-200">
+                      <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300"><Briefcase size={40} /></div>
+                      <p className="text-slate-400 font-bold text-lg">
+                          查無資料
+                      </p>
+                      <p className="text-sm text-slate-300 mt-1">
+                          {seasonType === 'view' ? `${seasonLabels.current} 沒有排班，好好休息` : `${seasonLabels.next} 沒有排班或尚未開放查詢`}
+                      </p>
+                    </div>
+                  )
                 )}
               </main>
             </div>
