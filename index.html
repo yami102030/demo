@@ -6,7 +6,6 @@
     <title>TBC 主日服事查詢系統</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 使用穩定版 Babel -->
     <script src="https://unpkg.com/@babel/standalone@7.22.20/babel.min.js"></script>
 
     <script type="importmap">
@@ -26,20 +25,10 @@
             from { opacity: 0; transform: translateY(10px); } 
             to { opacity: 1; transform: translateY(0); } 
         }
-        /* Custom Scrollbar for nicer look on desktop */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #f1f1f1; 
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #cbd5e1; 
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #94a3b8; 
-        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
 <body>
@@ -49,12 +38,7 @@
         window.onerror = function(msg, url, line, col, error) {
             const root = document.getElementById('root');
             if(root) {
-                root.innerHTML = `
-                    <div style="color:red; background:#fee; padding:20px; margin:20px; border-radius:10px; font-family: sans-serif;">
-                        <h3 style="margin-top:0;">❌ 程式發生錯誤</h3>
-                        <p>${msg}</p>
-                        <p style="font-size:0.8em; color:#666;">Line: ${line}</p>
-                    </div>`;
+                root.innerHTML = `<div style="color:red; background:#fee; padding:20px; margin:20px;"><h3>❌ 錯誤</h3><p>${msg}</p></div>`;
             }
             return false;
         };
@@ -64,13 +48,41 @@
         import React, { useState, useEffect, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
         import { 
-          Calendar, Clock, User, LogOut, Heart, Monitor, Users, Smile, BookOpen, 
-          Coffee, CheckCircle, Info, RefreshCw, Wifi, Database, AlertCircle, 
-          ArrowLeft, Search, UserCheck, BarChart, ArrowRight, UserX, Briefcase, Link as LinkIcon, Activity, MessageCircle, Send,
-          ArrowLeftRight, HandHeart, Layers
+          Calendar, User, LogOut, Heart, Monitor, Users, Smile, BookOpen, 
+          Coffee, RefreshCw, AlertCircle, ArrowLeft, UserCheck, HandHeart, 
+          Clock, Briefcase, Info, Lock, Unlock, Link as LinkIcon, X
         } from 'lucide-react';
 
         const API_URL = "https://script.google.com/macros/s/AKfycbxjnNHK8QB8yW8rF_izV5SJBeZ0Go6KE13qzPX06d5knUV9VUK6WsPtI5h5n79ujPVFOA/exec";
+        
+        // ★★★ 預設自動規則 (當沒有特殊連結時使用) ★★★
+        const AUTO_OPEN_MONTHS = [3, 6, 9, 12]; // 3,6,9,12月開放
+        const AUTO_OPEN_DAY = 1; // 每月1號開放
+
+        // --- 核心權限判斷邏輯 ---
+        const checkIsOpen = () => {
+            if (typeof window === 'undefined') return false;
+            
+            // 1. 優先檢查網址參數 ?mode=...
+            const params = new URLSearchParams(window.location.search);
+            const mode = params.get('mode');
+
+            if (mode === 'open') return true;   // 強制開啟
+            if (mode === 'close') return false; // 強制關閉
+            
+            // 2. 自動日期判斷 (auto)
+            const now = new Date();
+            const currentMonth = now.getMonth() + 1;
+            const currentDay = now.getDate();
+
+            if (AUTO_OPEN_MONTHS.includes(currentMonth) && currentDay >= AUTO_OPEN_DAY) {
+                return true;
+            }
+            
+            return false;
+        };
+
+        const ENABLE_PRE_SCHEDULE = checkIsOpen();
 
         const ROLE_CONFIG = {
           '司會': { color: 'bg-purple-100 text-purple-700 border-purple-200', icon: User },
@@ -137,19 +149,15 @@
           return stats;
         };
         
-        // ★★★ 計算季別標籤 Helper ★★★
         const getSeasonLabels = () => {
             const now = new Date();
-            const month = now.getMonth() + 1; // 1-12
-            
-            // 邏輯：1-3, 4-6, 7-9, 10-12
+            const month = now.getMonth() + 1;
             if (month >= 1 && month <= 3) return { current: '1-3月', next: '4-6月' };
             if (month >= 4 && month <= 6) return { current: '4-6月', next: '7-9月' };
             if (month >= 7 && month <= 9) return { current: '7-9月', next: '10-12月' };
             return { current: '10-12月', next: '1-3月' };
         };
 
-        // 資料讀取邏輯
         const processPeopleData = (rawData) => {
           if (!Array.isArray(rawData) || rawData.length === 0) return [];
 
@@ -164,7 +172,6 @@
             }
             const rowValues = Object.values(rowObj);
 
-            // 基礎資料
             const nameKey = Object.keys(rowObj).find(k => k.includes('姓名') || k.toLowerCase() === 'name');
             const name = nameKey ? rowObj[nameKey] : '';
             
@@ -177,7 +184,6 @@
             const willingnessKey = Object.keys(rowObj).find(k => k.includes('服事意願') || k.includes('willingness'));
             const willingness = willingnessKey ? String(rowObj[willingnessKey]) : '';
 
-            // --- 抓取 Group 與 Session2 ---
             let rawGroup = rowValues.length > 1 ? String(rowValues[1] || '') : '';
             let rawSession2 = rowValues.length > 5 ? String(rowValues[5] || '') : '';
 
@@ -228,8 +234,6 @@
           const [progress, setProgress] = useState(0);
           
           const [seasonType, setSeasonType] = useState('view'); 
-          
-          // ★★★ 計算季別 Labels ★★★
           const seasonLabels = useMemo(() => getSeasonLabels(), []);
 
           useEffect(() => {
@@ -239,7 +243,6 @@
               setStatsData({});
               
               setIsSyncing(true);
-              // ★ 使用動態 Label 顯示狀態
               const seasonName = seasonType === 'view' ? seasonLabels.current : seasonLabels.next;
               const typeName = seasonType === 'view' ? '服事表' : '預排表';
               setSyncStatus(`載入 ${seasonName} ${typeName}...`);
@@ -312,34 +315,112 @@
           return <div className="min-h-screen bg-slate-50 font-sans text-slate-900">{renderView()}</div>;
         }
 
+        // --- Admin Tools Component ---
+        function AdminModal({ isOpen, onClose }) {
+            if (!isOpen) return null;
+
+            const baseUrl = window.location.href.split('?')[0];
+            const copyToClipboard = (text) => {
+                navigator.clipboard.writeText(text).then(() => alert('連結已複製！請貼到群組'));
+            };
+
+            return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-4">
+                        <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                            <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                                <Lock size={20} className="text-indigo-600"/> 管理員連結產生器
+                            </h3>
+                            <button onClick={onClose} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200"><X size={20}/></button>
+                        </div>
+                        <p className="text-sm text-slate-500">不需修改程式碼，請直接複製對應的連結給同工，即可控制預排表權限。</p>
+                        
+                        <div className="space-y-3">
+                            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="font-bold text-emerald-700 flex items-center gap-2"><Unlock size={16}/> 強制開啟</span>
+                                    <span className="text-[10px] bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full">所有人可見</span>
+                                </div>
+                                <button onClick={() => copyToClipboard(`${baseUrl}?mode=open`)} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
+                                    <LinkIcon size={16}/> 複製開啟連結
+                                </button>
+                            </div>
+
+                            <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="font-bold text-red-700 flex items-center gap-2"><Lock size={16}/> 強制關閉</span>
+                                    <span className="text-[10px] bg-red-200 text-red-800 px-2 py-0.5 rounded-full">隱藏預排</span>
+                                </div>
+                                <button onClick={() => copyToClipboard(`${baseUrl}?mode=close`)} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
+                                    <LinkIcon size={16}/> 複製關閉連結
+                                </button>
+                            </div>
+
+                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="font-bold text-slate-700 flex items-center gap-2"><Clock size={16}/> 自動模式 (預設)</span>
+                                    <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">依日期自動</span>
+                                </div>
+                                <button onClick={() => copyToClipboard(baseUrl)} className="w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
+                                    <LinkIcon size={16}/> 複製原始連結
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         // --- Views ---
         function LoginView({ name, setName, onLogin, loginError, isSyncing, syncStatus, progress, seasonType, setSeasonType, seasonLabels }) {
+          // 管理員密技：點擊 LOGO 5次開啟管理選單
+          const [logoClicks, setLogoClicks] = useState(0);
+          const [showAdmin, setShowAdmin] = useState(false);
+
+          const handleLogoClick = () => {
+              setLogoClicks(prev => {
+                  const newCount = prev + 1;
+                  if (newCount >= 5) {
+                      setShowAdmin(true);
+                      return 0;
+                  }
+                  return newCount;
+              });
+          };
+
           return (
             <div className="min-h-screen flex items-center justify-center p-6 bg-slate-100">
+              <AdminModal isOpen={showAdmin} onClose={() => setShowAdmin(false)} />
+              
               <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-10 border border-white">
                 <div className="text-center mb-10">
-                  <div className={`w-24 h-24 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-xl rotate-3 transition-colors duration-500 ${seasonType === 'view' ? 'bg-indigo-600 shadow-indigo-200' : 'bg-emerald-600 shadow-emerald-200'}`}>
+                  <div 
+                    onClick={handleLogoClick}
+                    className={`w-24 h-24 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-xl rotate-3 transition-colors duration-500 cursor-pointer active:scale-95 ${seasonType === 'view' ? 'bg-indigo-600 shadow-indigo-200' : 'bg-emerald-600 shadow-emerald-200'}`}
+                    title="點擊 5 次開啟管理員選單"
+                  >
                     <Calendar className="w-12 h-12 text-white" />
                   </div>
                   <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 tracking-tight">TBC 主日服事查詢系統</h2>
                   
-                  {/* 季別切換按鈕 (顯示月份) */}
-                  <div className="mt-6 flex justify-center">
-                    <div className="bg-slate-100 p-1.5 rounded-xl inline-flex relative">
-                        <button 
-                            onClick={() => setSeasonType('view')}
-                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${seasonType === 'view' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                        >
-                            {seasonLabels.current} 服事表
-                        </button>
-                        <button 
-                            onClick={() => setSeasonType('next')}
-                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${seasonType === 'next' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                        >
-                            {seasonLabels.next} 預排表
-                        </button>
+                  {ENABLE_PRE_SCHEDULE && (
+                    <div className="mt-6 flex justify-center">
+                        <div className="bg-slate-100 p-1.5 rounded-xl inline-flex relative">
+                            <button 
+                                onClick={() => setSeasonType('view')}
+                                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${seasonType === 'view' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                {seasonLabels.current} 服事表
+                            </button>
+                            <button 
+                                onClick={() => setSeasonType('next')}
+                                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${seasonType === 'next' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                            >
+                                {seasonLabels.next} 預排表
+                            </button>
+                        </div>
                     </div>
-                  </div>
+                  )}
 
                   <p className="text-slate-400 mt-4 font-medium text-sm">
                     {seasonType === 'view' ? `查詢 ${seasonLabels.current} 服事班表` : `查詢 ${seasonLabels.next} 預排班表`}
@@ -441,18 +522,20 @@
                   <div className="flex flex-col">
                       <div className="flex items-center gap-2">
                           <p className="text-[10px] text-slate-400 font-bold uppercase">HI, WELCOME</p>
-                          {/* 內頁季別切換 (顯示月份) */}
-                          <button 
-                            onClick={() => setSeasonType(seasonType === 'view' ? 'next' : 'view')}
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold border transition-colors flex items-center gap-1 ${
-                                seasonType === 'view' 
-                                ? 'bg-indigo-50 text-indigo-600 border-indigo-100 hover:bg-indigo-100' 
-                                : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100'
-                            }`}
-                          >
-                            <RefreshCw size={8} />
-                            切換查詢
-                          </button>
+                          {/* 內頁季別切換 (顯示月份) - 依據 ENABLE_PRE_SCHEDULE 決定是否顯示 */}
+                          {ENABLE_PRE_SCHEDULE && (
+                              <button 
+                                onClick={() => setSeasonType(seasonType === 'view' ? 'next' : 'view')}
+                                className={`text-[10px] px-2 py-0.5 rounded-full font-bold border transition-colors flex items-center gap-1 ${
+                                    seasonType === 'view' 
+                                    ? 'bg-indigo-50 text-indigo-600 border-indigo-100 hover:bg-indigo-100' 
+                                    : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100'
+                                }`}
+                              >
+                                <RefreshCw size={8} />
+                                切換查詢
+                              </button>
+                          )}
                       </div>
                       <div className="flex items-center gap-1">
                         <h2 className="text-lg font-black text-slate-800">{name}</h2>
