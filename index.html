@@ -269,7 +269,7 @@
           const handleLogin = (e) => {
             e.preventDefault();
             const trimmedName = name.trim();
-            if (!trimmedName) return setLoginError('請輸入姓名');
+            if (!trimmedName) return setLoginError('請輸入完整姓名');
             
             const userExists = peopleData.some(p => p.name === trimmedName);
             if (userExists || peopleData.length === 0) {
@@ -586,7 +586,7 @@
               </nav>
               <main className="flex-grow p-6 space-y-6 max-w-2xl mx-auto w-full">
                 <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200">
-                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">幫此服事找合適人選：</h3>
+                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">幫今天的服事找合適人選：</h3>
                    <div className="flex items-center gap-4">
                       <div className="bg-indigo-50 p-4 rounded-2xl text-indigo-600"><Calendar size={28} /></div>
                       <div>
