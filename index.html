@@ -339,7 +339,7 @@
             };
 
             const copyToClipboard = (text) => {
-                navigator.clipboard.writeText(text).then(() => alert('連結已複製！30 天後自動失效。'));
+                navigator.clipboard.writeText(text).then(() => alert('連結已複製！此連結 30 天後會自動失效。'));
             };
 
             return (
@@ -361,7 +361,7 @@
                                 <button onClick={() => copyToClipboard(generateTimeLimitedLink(30))} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
                                     <LinkIcon size={16}/> 複製 30天有效連結
                                 </button>
-                                <p className="text-[10px] text-emerald-600/60 mt-2 text-center">30天後連結自動變回一般登入頁</p>
+                                <p className="text-[10px] text-emerald-600/60 mt-2 text-center">30天後連結會自動變回一般登入頁</p>
                             </div>
 
                             <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
@@ -381,14 +381,14 @@
 
         // --- Views ---
         function LoginView({ name, setName, onLogin, loginError, isSyncing, syncStatus, progress, seasonType, setSeasonType, seasonLabels }) {
-          // 管理員密技：點擊 LOGO 5次開啟管理選單
+          // 管理員密技：點擊 LOGO 3次開啟管理選單
           const [logoClicks, setLogoClicks] = useState(0);
           const [showAdmin, setShowAdmin] = useState(false);
 
           const handleLogoClick = () => {
               setLogoClicks(prev => {
                   const newCount = prev + 1;
-                  if (newCount >= 5) {
+                  if (newCount >= 3) { // 修正為 3 次
                       setShowAdmin(true);
                       return 0;
                   }
@@ -405,7 +405,7 @@
                   <div 
                     onClick={handleLogoClick}
                     className={`w-24 h-24 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-xl rotate-3 transition-colors duration-500 cursor-pointer active:scale-95 ${seasonType === 'view' ? 'bg-indigo-600 shadow-indigo-200' : 'bg-emerald-600 shadow-emerald-200'}`}
-                    title="點擊 5 次開啟管理員選單"
+                    title="點擊 3 次開啟管理員選單"
                   >
                     <Calendar className="w-12 h-12 text-white" />
                   </div>
