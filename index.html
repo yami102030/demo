@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TBC 主日服事查詢系統 (整合版)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 使用穩定版 Babel -->
+    <script src="https://unpkg.com/@babel/standalone@7.22.20/babel.min.js"></script>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react,react-dom"
+        }
+    }
+    </script>
+
+    <style>
+        body { background-color: #f8fafc; font-family: sans-serif; }
+        .animate-in { animation: fadeIn 0.5s ease-out forwards; opacity: 0; }
+        @keyframes fadeIn { 
+            from { opacity: 0; transform: translateY(10px); } 
+            to { opacity: 1; transform: translateY(0); } 
+        }
+        /* 自訂切換開關樣式 */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #4f46e5;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #4f46e5;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script>
+        window.onerror = function(msg, url, line, col, error) {
+            const root = document.getElementById('root');
+            if(root) {
+                root.innerHTML = `
+                    <div style="color:red; background:#fee; padding:20px; margin:20px; border-radius:10px;">
+                        <h3>❌ 程式發生錯誤</h3>
+                        <p>${msg}</p>
+                        <p>Line: ${line}</p>
+                    </div>`;
+            }
+            return false;
+        };
+    </script>
+
+    <script type="text/babel" data-type="module" data-presets="react">
+        import React, { useState, useEffect, useMemo } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+          Calendar, Clock, User, LogOut, Heart, Monitor, Users, Smile, BookOpen, 
+          Coffee, CheckCircle, Info, RefreshCw, Wifi, Database, AlertCircle, 
+          ArrowLeft, Search, UserCheck, BarChart, ArrowRight, UserX, Briefcase, Link as LinkIcon, Activity, MessageCircle, Send,
+          ArrowLeftRight, HandHeart, Layers
+        } from 'lucide-react';
+
+        const API_URL = "https://script.google.com/macros/s/AKfycbxjnNHK8QB8yW8rF_izV5SJBeZ0Go6KE13qzPX06d5knUV9VUK6WsPtI5h5n79ujPVFOA/exec";
+
+        const ROLE_CONFIG = {
+          '司會': { color: 'bg-purple-100 text-purple-700 border-purple-200', icon: User },
+          '執事輪值': { color: 'bg-indigo-100 text-indigo-700 border-indigo-200', icon: BookOpen },
+          '接待': { color: 'bg-blue-100 text-blue-700 border-blue-200', icon: Users },
+          '收奉獻': { color: 'bg-green-100 text-green-700 border-green-200', icon: Heart },
+          '主餐': { color: 'bg-red-100 text-red-700 border-red-200', icon: Coffee },
+          'PPT': { color: 'bg-orange-100 text-orange-700 border-orange-200', icon: Monitor },
+          '新朋友關懷': { color: 'bg-pink-100 text-pink-700 border-pink-200', icon: Smile },
+          '預設': { color: 'bg-slate-50 text-slate-400 border-slate-100', icon: Clock }
+        };
+
+        const DEFAULT_SCHEDULE = [];
+        const DEFAULT_PEOPLE_DATA = [];
+        const DEFAULT_STATS = { "DEFAULT": 0 };
+
+        // --- Helper Functions ---
+        const normalizeDateStr = (d) => {
+            if (!d) return '';
+            const str = String(d);
+            if (str.includes('T')) {
+                const date = new Date(str);
+                return `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()}`;
+            }
+            const parts = str.split('/');
+            if (parts.length === 3) return `${parseInt(parts[0])}/${parseInt(parts[1])}/${parseInt(parts[2])}`;
+            return str;
+        };
+
+        const parseDateObj = (dStr) => {
+            const norm = normalizeDateStr(dStr);
+            if (!norm) return new Date(9999, 11, 31);
+            const parts = norm.split('/');
+            return new Date(parts[0], parts[1] - 1, parts[2]);
+        };
+
+        const sheetToObjects = (rows) => {
+          if (!rows || rows.length < 2) return [];
+          const headers = rows[0];
+          return rows.slice(1).map(row => {
+            const obj = {};
+            headers.forEach((h, i) => { obj[h] = row[i]; });
+            return obj;
+          });
+        };
+
+        const processStatsData = (rawRows) => {
+          const stats = {};
+          if (!Array.isArray(rawRows)) return stats;
+          const isObjectArray = !Array.isArray(rawRows[0]);
+          const dataRows = isObjectArray ? rawRows : rawRows.slice(1);
+          dataRows.forEach(row => {
+            let rowObj = isObjectArray ? row : {};
+            if (!isObjectArray) rawRows[0].forEach((h, i) => { rowObj[h] = row[i]; });
+            
+            const nameKey = Object.keys(rowObj).find(k => k.includes('姓名') || k.toLowerCase() === 'name');
+            const countKey = Object.keys(rowObj).find(k => k.includes('總次數') || k.includes('count'));
+            if (nameKey && countKey) {
+              const name = rowObj[nameKey];
+              const count = parseInt(rowObj[countKey]);
+              if (name && !isNaN(count)) stats[name] = count;
+            }
+          });
+          return stats;
+        };
+
+        // 資料讀取邏輯
+        const processPeopleData = (rawData) => {
+          if (!Array.isArray(rawData) || rawData.length === 0) return [];
+
+          const isObjectArray = !Array.isArray(rawData[0]);
+          const dataRows = isObjectArray ? rawData : rawData.slice(1); 
+
+          return dataRows.map((row, index) => {
+            let rowObj = row;
+            if (!isObjectArray) {
+                rowObj = {};
+                rawData[0].forEach((h, i) => { rowObj[h] = row[i]; });
+            }
+            const rowValues = Object.values(rowObj);
+
+            // 基礎資料
+            const nameKey = Object.keys(rowObj).find(k => k.includes('姓名') || k.toLowerCase() === 'name');
+            const name = nameKey ? rowObj[nameKey] : '';
+            
+            const sessionKey = Object.keys(rowObj).find(k => k.includes('服事時段') || k.includes('session'));
+            const session = sessionKey ? rowObj[sessionKey] : '皆可';
+
+            const unavailableKey = Object.keys(rowObj).find(k => k.includes('不能參與') || k.includes('unavailable'));
+            const unavailable = unavailableKey ? rowObj[unavailableKey] : '';
+
+            const willingnessKey = Object.keys(rowObj).find(k => k.includes('服事意願') || k.includes('willingness'));
+            const willingness = willingnessKey ? String(rowObj[willingnessKey]) : '';
+
+            // --- 抓取 Group 與 Session2 ---
+            
+            // 1. 強制抓取原始位置 (B=Index 1, F=Index 5)
+            let rawGroup = rowValues.length > 1 ? String(rowValues[1] || '') : '';
+            let rawSession2 = rowValues.length > 5 ? String(rowValues[5] || '') : '';
+
+            let groupId = rawGroup.toUpperCase().trim();
+            let session2 = rawSession2.trim();
+
+            // 2. 如果位置抓不到，嘗試用標題關鍵字抓 (備案)
+            if (!groupId.includes('FA') && !groupId.includes('FB')) {
+                const gKey = Object.keys(rowObj).find(k => k.toUpperCase().includes('ID') || k.includes('群組'));
+                if (gKey) groupId = String(rowObj[gKey] || '').toUpperCase().trim();
+            }
+            
+            // F 欄備案：找標題含 "主日服事二堂"
+            const s2Key = Object.keys(rowObj).find(k => k.includes('主日服事二堂'));
+            if (s2Key) {
+                session2 = String(rowObj[s2Key]).trim();
+            } else {
+                if (!session2.includes('1') && !session2.includes('2')) {
+                    const altKey = Object.keys(rowObj).find(k => (k.includes('二堂') || k.includes('2堂')) && !k.includes('時段'));
+                    if (altKey) session2 = String(rowObj[altKey]).trim();
+                }
+            }
+
+            // 3. 寬鬆判定並轉換為 S1 / S2
+            let finalSession2 = '';
+            const s2Upper = session2.toUpperCase();
+            if (s2Upper.includes('S1') || s2Upper.includes('1')) finalSession2 = 'S1';
+            else if (s2Upper.includes('S2') || s2Upper.includes('2')) finalSession2 = 'S2';
+
+            // 處理崗位
+            const roles = {};
+            Object.keys(ROLE_CONFIG).forEach(roleName => {
+              const key = Object.keys(rowObj).find(k => k.trim() === roleName);
+              if (key && rowObj[key]) roles[roleName] = "O";
+            });
+
+            return { name, session, unavailable, willingness, roles, groupId, session2: finalSession2 };
+          }).filter(p => p.name);
+        };
+
+        // --- App Component ---
+        function App() {
+          const [currentView, setCurrentView] = useState('login'); 
+          const [name, setName] = useState('');
+          const [loginError, setLoginError] = useState('');
+          const [swapRequest, setSwapRequest] = useState(null); 
+          const [scheduleData, setScheduleData] = useState(DEFAULT_SCHEDULE);
+          const [peopleData, setPeopleData] = useState(DEFAULT_PEOPLE_DATA);
+          const [statsData, setStatsData] = useState(DEFAULT_STATS);
+          const [isSyncing, setIsSyncing] = useState(false);
+          const [syncStatus, setSyncStatus] = useState('');
+          const [progress, setProgress] = useState(0);
+          
+          // ★★★ 新增：季別狀態 ('view' = 本季/正式, 'next' = 下季/預排) ★★★
+          // 預設為 'view' (正式)
+          const [seasonType, setSeasonType] = useState('view'); 
+
+          useEffect(() => {
+            const loadAllData = async () => {
+              // 重置資料以避免混淆
+              setScheduleData([]);
+              setPeopleData([]);
+              setStatsData({});
+              
+              setIsSyncing(true);
+              const seasonLabel = seasonType === 'view' ? '本季正式資料' : '下季預排資料';
+              setSyncStatus(`正在載入${seasonLabel}...`);
+              setProgress(10);
+
+              try {
+                // 根據 seasonType 決定 API 參數後綴
+                // view -> schedule_view, data_view, stats_view
+                // next -> schedule_next, data_next, stats_next
+                const typeSuffix = seasonType; 
+
+                // 1. 排班表 (Schedule)
+                const resSchedule = await fetch(`${API_URL}?type=schedule_${typeSuffix}`).then(r => r.json());
+                setProgress(40);
+                if (resSchedule.status === 'success') {
+                  const isObj = !Array.isArray(resSchedule.data[0]);
+                  setScheduleData(isObj ? resSchedule.data : sheetToObjects(resSchedule.data));
+                }
+
+                // 2. 人員名單 (Data)
+                const resData = await fetch(`${API_URL}?type=data_${typeSuffix}`).then(r => r.json());
+                setProgress(70);
+                if (resData.status === 'success') {
+                    setPeopleData(processPeopleData(resData.data));
+                }
+
+                // 3. 統計資料 (Stats)
+                const resStats = await fetch(`${API_URL}?type=stats_${typeSuffix}`).then(r => r.json());
+                setProgress(95);
+                if (resStats.status === 'success') {
+                    setStatsData(processStatsData(resStats.data));
+                }
+
+                // 完成
+                setProgress(100);
+                setSyncStatus(`${seasonLabel} 同步成功`);
+              } catch (err) {
+                console.error("同步失敗", err);
+                setSyncStatus('連線發生錯誤');
+              } finally {
+                setTimeout(() => setIsSyncing(false), 500);
+              }
+            };
+            loadAllData();
+          }, [seasonType]); // 當 seasonType 改變時重新讀取
+          
+          const handleLogin = (e) => {
+            e.preventDefault();
+            const trimmedName = name.trim();
+            if (!trimmedName) return setLoginError('請輸入姓名');
+            
+            const userExists = peopleData.some(p => p.name === trimmedName);
+            if (userExists || peopleData.length === 0) { // 若無資料也允許先登入看空狀態
+                setCurrentView('mySchedule');
+                setLoginError('');
+            } else {
+                setLoginError('找不到此姓名 (請確認選擇的季別是否正確)');
+            }
+          };
+
+          const handleLogout = () => {
+            setName('');
+            setLoginError('');
+            setSwapRequest(null);
+            setCurrentView('login');
+          };
+
+          const renderView = () => {
+            switch (currentView) {
+              case 'login': return <LoginView name={name} setName={setName} onLogin={handleLogin} loginError={loginError} isSyncing={isSyncing} syncStatus={syncStatus} progress={progress} seasonType={seasonType} setSeasonType={setSeasonType} />;
+              case 'mySchedule': return <MyScheduleView name={name} scheduleData={scheduleData} peopleData={peopleData} onLogout={handleLogout} onRequestSwap={(req) => { setSwapRequest(req); setCurrentView('swapSearch'); }} seasonType={seasonType} setSeasonType={setSeasonType} isSyncing={isSyncing} />;
+              case 'swapSearch': return <SwapSearchView name={name} scheduleData={scheduleData} peopleData={peopleData} statsData={statsData} onBack={() => setCurrentView('mySchedule')} onLogout={handleLogout} initialRequest={swapRequest} seasonType={seasonType} />;
+              default: return <LoginView name={name} setName={setName} onLogin={handleLogin} />;
+            }
+          };
+
+          return <div className="min-h-screen bg-slate-50 font-sans text-slate-900">{renderView()}</div>;
+        }
+
+        // --- Views ---
+        function LoginView({ name, setName, onLogin, loginError, isSyncing, syncStatus, progress, seasonType, setSeasonType }) {
+          return (
+            <div className="min-h-screen flex items-center justify-center p-6 bg-slate-100">
+              <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-10 border border-white">
+                <div className="text-center mb-10">
+                  <div className={`w-24 h-24 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-xl rotate-3 transition-colors duration-500 ${seasonType === 'view' ? 'bg-indigo-600 shadow-indigo-200' : 'bg-emerald-600 shadow-emerald-200'}`}>
+                    <Calendar className="w-12 h-12 text-white" />
+                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-bold text-slate-800 tracking-tight">TBC 主日服事查詢</h2>
+                  
+                  {/* 季別切換按鈕 (Segmented Control) */}
+                  <div className="mt-6 flex justify-center">
+                    <div className="bg-slate-100 p-1.5 rounded-xl inline-flex relative">
+                        <button 
+                            onClick={() => setSeasonType('view')}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${seasonType === 'view' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            本季正式表
+                        </button>
+                        <button 
+                            onClick={() => setSeasonType('next')}
+                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${seasonType === 'next' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                            下季預排表
+                        </button>
+                    </div>
+                  </div>
+
+                  <p className="text-slate-400 mt-4 font-medium text-sm">
+                    {seasonType === 'view' ? '查詢目前正在執行的服事班表' : '查詢下一季的排班草稿與規劃'}
+                  </p>
+                </div>
+
+                <form onSubmit={onLogin} className="space-y-4">
+                  <div className="relative">
+                    <User className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 w-6 h-6" />
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full pl-14 pr-6 py-5 rounded-2xl border-2 border-slate-100 bg-slate-50 focus:bg-white focus:border-indigo-500 outline-none transition-all text-xl font-bold placeholder:text-slate-300" placeholder="例如：張小明" required />
+                  </div>
+                  {loginError && <div className="flex items-center gap-2 text-red-500 bg-red-50 p-3 rounded-xl text-sm font-bold"><AlertCircle size={16} /><span>{loginError}</span></div>}
+                  <button type="submit" className={`w-full text-white font-black py-5 rounded-2xl shadow-lg transition-all active:scale-95 text-lg ${seasonType === 'view' ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-100'}`}>
+                      登入查詢 {seasonType === 'view' ? '本季' : '下季'}
+                  </button>
+                </form>
+
+                <div className={`mt-8 pt-6 border-t border-slate-100 text-center text-xs font-bold transition-all duration-300 ${
+                    isSyncing 
+                        ? 'text-[#02C874]' 
+                        : (syncStatus.includes('失敗') || syncStatus.includes('錯誤') ? 'bg-red-50 text-red-500 p-3 rounded-xl' : 'bg-slate-100 text-[#8E8E8E] p-3 rounded-xl')
+                }`}>
+                   {isSyncing ? (
+                       <div className="w-full">
+                           <div className="flex justify-between items-center mb-2 text-[#02C874] text-xs px-1">
+                                <span className="flex items-center gap-2"><RefreshCw size={12} className="animate-spin" /> 資料載入中</span>
+                                <span>{progress}%</span>
+                           </div>
+                           <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                               <div 
+                                   className="bg-[#02C874] h-full rounded-full transition-all duration-300 ease-out" 
+                                   style={{ width: `${progress}%` }}
+                               ></div>
+                           </div>
+                       </div>
+                   ) : syncStatus}
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        function MyScheduleView({ name, scheduleData, peopleData, onLogout, onRequestSwap, seasonType, setSeasonType, isSyncing }) {
+          const [flatShifts, setFlatShifts] = useState([]);
+          const numberedRoles = ['接待', '收奉獻', '主餐', '新朋友關懷']; 
+          
+          const myData = peopleData.find(p => p.name === name) || {};
+
+          useEffect(() => {
+            const searchName = name.trim();
+            const tempShifts = [];
+            
+            // ★★★ 過濾過期排班：取得今日零時 ★★★
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            scheduleData.forEach(row => {
+              const dateStr = normalizeDateStr(row['日期']);
+              if (!dateStr) return;
+              const dateObj = parseDateObj(row['日期']);
+
+              // ★★★ 過濾條件：只顯示今天及未來的排班 ★★★
+              if (dateObj < today) return;
+
+              const session = row['堂別'];
+              
+              Object.entries(row).forEach(([key, val]) => {
+                if (['堂別', '日期'].includes(key)) return;
+                const cellValue = String(val || '');
+                if (cellValue.includes(searchName)) {
+                   let shiftNumber = null;
+                   if (numberedRoles.includes(key)) {
+                       const names = cellValue.split(/,|、|，|\s+/).map(n => n.trim()).filter(n => n);
+                       const idx = names.indexOf(searchName);
+                       if (idx !== -1) shiftNumber = idx + 1;
+                   }
+                   tempShifts.push({ date: dateStr, dateObj, role: key, shiftNumber, session, rawSession: session });
+                }
+              });
+            });
+            const shiftsMap = new Map();
+            tempShifts.forEach(shift => {
+               const key = shift.role === '執事輪值' ? `${shift.date}|${shift.role}` : `${shift.date}|${shift.role}|${shift.session}`;
+               if (shiftsMap.has(key)) {
+                   const existing = shiftsMap.get(key);
+                   if (!existing.session.includes(shift.session)) existing.session += `, ${shift.session}`;
+               } else {
+                   shiftsMap.set(key, { ...shift });
+               }
+            });
+            setFlatShifts(Array.from(shiftsMap.values()).sort((a, b) => a.dateObj - b.dateObj));
+          }, [name, scheduleData]);
+
+          return (
+            <div className="min-h-screen bg-slate-50 flex flex-col">
+              <nav className="bg-white sticky top-0 z-50 border-b border-slate-100 px-4 py-3 sm:px-6 sm:py-4 flex justify-between items-center shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-xl text-white ${seasonType === 'view' ? 'bg-indigo-600' : 'bg-emerald-600'}`}>
+                    <User size={20} />
+                  </div>
+                  <div className="flex flex-col">
+                      <div className="flex items-center gap-2">
+                          <p className="text-[10px] text-slate-400 font-bold uppercase">HI, WELCOME</p>
+                          {/* 內頁季別切換 Small Pill */}
+                          <button 
+                            onClick={() => setSeasonType(seasonType === 'view' ? 'next' : 'view')}
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold border transition-colors flex items-center gap-1 ${
+                                seasonType === 'view' 
+                                ? 'bg-indigo-50 text-indigo-600 border-indigo-100 hover:bg-indigo-100' 
+                                : 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100'
+                            }`}
+                          >
+                            <RefreshCw size={8} />
+                            {seasonType === 'view' ? '本季正式' : '下季預排'}
+                          </button>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <h2 className="text-lg font-black text-slate-800">{name}</h2>
+                      </div>
+                  </div>
+                </div>
+                <button onClick={onLogout} className="flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-xl text-slate-500 font-bold hover:text-red-500 hover:bg-red-50 transition-colors">
+                    <LogOut size={18}/>
+                    <span className="hidden sm:inline">登出</span>
+                </button>
+              </nav>
+
+              {/* 載入中遮罩 (當在內頁切換季別時) */}
+              {isSyncing && (
+                  <div className="fixed top-[70px] left-0 w-full z-40 bg-yellow-50 px-4 py-2 text-center text-xs font-bold text-yellow-600 flex justify-center items-center gap-2 shadow-sm">
+                     <RefreshCw size={12} className="animate-spin" /> 切換資料中...
+                  </div>
+              )}
+
+              <main className="flex-grow p-4 sm:p-6 space-y-4 max-w-2xl mx-auto w-full">
+                <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                        <Calendar className={seasonType === 'view' ? 'text-indigo-500' : 'text-emerald-500'} size={20} />
+                        <h3 className="text-lg sm:text-xl font-bold text-slate-800">
+                            {seasonType === 'view' ? '本季服事安排' : '下季預排表'}
+                        </h3>
+                    </div>
+                </div>
+
+                {flatShifts.length > 0 ? (
+                  flatShifts.map((shift, index) => {
+                    const rConfig = ROLE_CONFIG[shift.role] || ROLE_CONFIG['預設'];
+                    const textColorClass = rConfig.color.split(' ')[1] || 'text-slate-800';
+                    return (
+                      <div key={index} className="bg-white rounded-[1.5rem] p-5 shadow-sm border border-slate-200 flex items-center justify-between gap-4 animate-in fade-in transition-transform hover:scale-[1.01]" style={{animationDelay: `${index * 50}ms`}}>
+                        <div className="flex flex-col gap-1 flex-grow">
+                           <span className={`text-xl font-black tracking-tight leading-tight ${textColorClass} flex items-center gap-2`}>
+                             {shift.role}
+                             {shift.shiftNumber && <span className="flex items-center justify-center w-6 h-6 rounded-full border-2 border-current text-xs font-bold shrink-0">{shift.shiftNumber}</span>}
+                           </span>
+                           <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-500">
+                              <div className="flex items-center gap-1.5"><Calendar size={14} className="text-slate-400"/><span>{shift.date}</span></div>
+                              <span className="text-slate-300">|</span><span className="bg-slate-100 px-2 py-0.5 rounded text-xs">{shift.session}</span>
+                           </div>
+                        </div>
+                        <button onClick={() => onRequestSwap({ date: shift.date, role: shift.role, session: shift.rawSession, owner: name })} className="flex flex-col items-center justify-center gap-1 bg-white hover:bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl transition-all active:scale-95 border-2 border-emerald-100 flex-shrink-0 shadow-sm">
+                          <RefreshCw size={18} /><span className="text-[10px] font-bold">換班查詢</span>
+                        </button>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-20 bg-white rounded-[2rem] border-2 border-dashed border-slate-200">
+                    <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300"><Briefcase size={40} /></div>
+                    <p className="text-slate-400 font-bold text-lg">
+                        {isSyncing ? '資料載入中...' : '查無資料'}
+                    </p>
+                    <p className="text-sm text-slate-300 mt-1">
+                        {isSyncing ? '請稍候' : '本季/下季沒有您的排班，好好休息'}
+                    </p>
+                  </div>
+                )}
+              </main>
+            </div>
+          );
+        }
+
+        function SwapSearchView({ name, scheduleData, peopleData, statsData, onBack, onLogout, initialRequest, seasonType }) {
+          const [selectedDate, setSelectedDate] = useState(initialRequest?.date || '');
+          const [selectedRole, setSelectedRole] = useState(initialRequest?.role || '');
+          const [selectedSession, setSelectedSession] = useState(initialRequest?.session || '');
+          const [targetOwner, setTargetOwner] = useState(initialRequest?.owner || name);
+          const [candidates, setCandidates] = useState(null);
+
+          useEffect(() => {
+            if (!initialRequest) return;
+            const targetDateNorm = normalizeDateStr(initialRequest.date);
+            const schedulesOnDate = scheduleData.filter(s => normalizeDateStr(s['日期']) === targetDateNorm);
+            const requesterBusyDates = new Set();
+            scheduleData.forEach(row => {
+               if(Object.values(row).some(v => String(v).includes(targetOwner))) requesterBusyDates.add(normalizeDateStr(row['日期']));
+            });
+
+            // 取得申請者資料
+            const requester = peopleData.find(p => p.name === targetOwner);
+
+            // ★★★ 過濾過期交換日期：取得今日零時 ★★★
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            let potential = [];
+            peopleData.forEach(person => {
+              if (person.name === targetOwner) return;
+              if (person.willingness.includes('休息') || person.willingness.includes('暫停')) return;
+              if (!person.roles[initialRequest.role]) return;
+              if (initialRequest.role !== '執事輪值' && person.session !== '皆可' && !person.session.includes(initialRequest.session)) return;
+              
+              let isBusy = false;
+              schedulesOnDate.forEach(s => {
+                 if(Object.values(s).some(v => String(v).includes(person.name))) isBusy = true;
+              });
+              if(isBusy) return;
+
+              const swapOptions = [];
+              const addedSwaps = new Set();
+
+              scheduleData.forEach(row => {
+                 const rDate = normalizeDateStr(row['日期']);
+                 const rDateObj = parseDateObj(row['日期']);
+                 
+                 // ★★★ 過濾條件：只抓今天及未來的交換日期 ★★★
+                 if(rDateObj < today) return;
+
+                 if(rDate === targetDateNorm || requesterBusyDates.has(rDate)) return;
+                 let roleOnDay = null;
+                 Object.entries(row).forEach(([k, v]) => {
+                    if(['日期','堂別'].includes(k)) return;
+                    if(String(v).includes(person.name)) roleOnDay = k;
+                 });
+                 
+                 if(roleOnDay && requester && requester.roles[roleOnDay]) {
+                     const uniqueKey = `${rDate}_${roleOnDay}`;
+                     if (!addedSwaps.has(uniqueKey)) {
+                        swapOptions.push({ date: rDate, role: roleOnDay });
+                        addedSwaps.add(uniqueKey);
+                     }
+                 }
+              });
+
+              potential.push({ ...person, swapOptions, stats: statsData[person.name] || 0 });
+            });
+
+            potential.sort((a, b) => a.stats - b.stats);
+            setCandidates(potential);
+          }, [initialRequest, scheduleData, peopleData, statsData]);
+
+          return (
+            <div className="min-h-screen bg-slate-50 flex flex-col">
+              <nav className="bg-white sticky top-0 z-50 border-b border-slate-100 px-6 py-4 flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <button onClick={onBack} className="bg-slate-100 p-2 rounded-xl text-slate-600 hover:bg-slate-200 transition-colors"><ArrowLeft size={20}/></button>
+                  <div>
+                      <h2 className="text-xl font-black text-slate-800">上一頁</h2>
+                      <span className="text-[10px] text-slate-400 font-bold">{seasonType === 'view' ? '本季查詢' : '下季查詢'}</span>
+                  </div>
+                </div>
+                <button onClick={onLogout} className="flex items-center gap-2 bg-slate-100 px-4 py-2 rounded-xl text-slate-500 font-bold hover:text-red-500 hover:bg-red-50 transition-colors"><LogOut size={18}/><span>登出</span></button>
+              </nav>
+              <main className="flex-grow p-6 space-y-6 max-w-2xl mx-auto w-full">
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200">
+                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">幫此服事找合適人選：</h3>
+                   <div className="flex items-center gap-4">
+                      <div className="bg-indigo-50 p-4 rounded-2xl text-indigo-600"><Calendar size={28} /></div>
+                      <div>
+                         <p className="text-2xl font-black text-slate-800">{normalizeDateStr(selectedDate)}</p>
+                         <div className="flex items-center gap-2 mt-1">
+                            <span className="text-sm font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">{selectedRole}</span>
+                            {selectedRole !== '執事輪值' && <span className="text-sm font-bold text-slate-400">• {selectedSession}</span>}
+                         </div>
+                      </div>
+                   </div>
+                </div>
+                {candidates && (
+                  <div className="space-y-4 animate-in fade-in">
+                    <div className="flex items-center justify-between px-2">
+                      <h3 className="font-black text-slate-700 flex items-center gap-2"><UserCheck className="text-emerald-500" /> 推薦人選 ({candidates.length})</h3>
+                      <span className="text-[10px] bg-slate-200 text-slate-500 px-2 py-1 rounded">依服事次數排序</span>
+                    </div>
+                    {candidates.length > 0 ? (
+                      candidates.map((person, idx) => (
+                          <div key={idx} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm transition-all hover:shadow-md">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-white shadow-md ${idx < 3 ? 'bg-emerald-500' : 'bg-slate-300'}`}>{idx + 1}</div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-xl font-black text-slate-800">{person.name}</p>
+                                    {person.swapOptions.length > 0 ? (
+                                      <span className="flex items-center gap-1 text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100">
+                                         <span className="text-xs">⇄</span> 換班
+                                      </span>
+                                    ) : (
+                                      <span className="flex items-center gap-1 text-[10px] font-bold bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full border border-orange-100"><HandHeart size={10} /> 替補</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1 text-xs font-bold text-slate-400 mt-1">
+                                    <span className="bg-slate-100 px-1.5 py-0.5 rounded">{person.session}</span>
+                                    <span>•</span>
+                                    <span>{seasonType === 'view' ? '本季' : '預排'}服事 {person.stats} 次</span>
+                                    
+                                    {/* H 標記 (FA/FB) */}
+                                    {person.groupId.includes('FA') && (
+                                        <span className="ml-1 px-1.5 h-5 rounded-[4px] bg-slate-400 text-white flex items-center justify-center text-[10px] font-bold" title="群組: FA">FA</span>
+                                    )}
+                                    {person.groupId.includes('FB') && (
+                                        <span className="ml-1 px-1.5 h-5 rounded-[4px] bg-slate-400 text-white flex items-center justify-center text-[10px] font-bold" title="群組: FB">FB</span>
+                                    )}
+
+                                    {/* S 標記 (S1/S2) */}
+                                    {(person.session2 === 'S1' || person.session2 === 'S2') && (
+                                        <span className="ml-1 px-1.5 h-5 rounded-[4px] bg-slate-400 text-white flex items-center justify-center text-[10px] font-bold" title={`二堂服事: ${person.session2}`}>{person.session2}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            {person.swapOptions.length > 0 ? (
+                              <div className="mt-4 pt-3 border-t border-slate-50">
+                                <p className="text-[10px] font-bold text-slate-400 mb-2 flex items-center gap-1"><RefreshCw size={10} /> 雙方可以換班日期 (互換班次)：</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {person.swapOptions.map((swap, i) => (
+                                    <div key={i} className="text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100 flex items-center gap-1">
+                                      <span className="font-bold">{swap.date}</span>
+                                      <span className="text-[10px] opacity-70">({swap.role})</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="mt-4 pt-3 border-t border-slate-50">
+                                <p className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                    <Info size={10} /> 說明：雙方無班可換，但時間上可以支援
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                      ))
+                    ) : (
+                      <div className="p-10 text-center text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200">
+                        <UserX className="mx-auto mb-4 opacity-30" size={48} /><p>找不到人選</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </main>
+            </div>
+          );
+        }
+
+        const container = document.getElementById('root');
+        const root = createRoot(container);
+        root.render(<App />);
+    </script>
+</body>
+</html>
