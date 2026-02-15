@@ -47,11 +47,10 @@
     <script type="text/babel" data-type="module" data-presets="react">
         import React, { useState, useEffect, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
-        // 修正：補上 UserX
         import { 
           Calendar, User, LogOut, Heart, Monitor, Users, Smile, BookOpen, 
           Coffee, RefreshCw, AlertCircle, ArrowLeft, UserCheck, HandHeart, 
-          Clock, Briefcase, Info, Lock, Unlock, Link as LinkIcon, X, Timer, UserX
+          Clock, Briefcase, Info, Lock, Unlock, Link as LinkIcon, X, Timer, UserX, CalendarPlus
         } from 'lucide-react';
 
         const API_URL = "https://script.google.com/macros/s/AKfycbxjnNHK8QB8yW8rF_izV5SJBeZ0Go6KE13qzPX06d5knUV9VUK6WsPtI5h5n79ujPVFOA/exec";
@@ -88,6 +87,52 @@
         };
 
         const ENABLE_PRE_SCHEDULE = checkIsOpen();
+
+        // --- 儲存輔助函式 (針對手機版優化：同時使用 LocalStorage 與 Cookie) ---
+        const setLocalData = (key, value) => {
+            if (typeof window === 'undefined') return;
+            // 1. 嘗試寫入 LocalStorage
+            try {
+                localStorage.setItem(key, value);
+            } catch (e) {
+                console.warn('LocalStorage access denied');
+            }
+            // 2. 同時寫入 Cookie (作為備案，期限30天)
+            try {
+                const date = new Date();
+                date.setTime(date.getTime() + (30 * 24 * 60 * 60 * 1000)); 
+                document.cookie = `${key}=${encodeURIComponent(value)}; expires=${date.toUTCString()}; path=/`;
+            } catch (e) {}
+        };
+
+        const getLocalData = (key) => {
+            if (typeof window === 'undefined') return null;
+            let value = null;
+            
+            // 1. 優先讀取 LocalStorage
+            try {
+                value = localStorage.getItem(key);
+            } catch(e) {}
+            
+            // 2. 若沒讀到，嘗試讀取 Cookie
+            if (!value) {
+                try {
+                    const match = document.cookie.match(new RegExp('(^| )' + key + '=([^;]+)'));
+                    if (match) value = decodeURIComponent(match[2]);
+                } catch(e) {}
+            }
+            return value;
+        };
+
+        const removeLocalData = (key) => {
+            if (typeof window === 'undefined') return;
+            try {
+                localStorage.removeItem(key);
+            } catch(e) {}
+            try {
+                document.cookie = `${key}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+            } catch(e) {}
+        };
 
         const ROLE_CONFIG = {
           '司會': { color: 'bg-purple-100 text-purple-700 border-purple-200', icon: User },
@@ -227,8 +272,11 @@
 
         // --- App Component ---
         function App() {
-          const [currentView, setCurrentView] = useState('login'); 
-          const [name, setName] = useState('');
+          const savedUser = getLocalData('tbc_user');
+          
+          const [name, setName] = useState(savedUser || '');
+          const [currentView, setCurrentView] = useState(savedUser ? 'mySchedule' : 'login'); 
+          
           const [loginError, setLoginError] = useState('');
           const [swapRequest, setSwapRequest] = useState(null); 
           const [scheduleData, setScheduleData] = useState(DEFAULT_SCHEDULE);
@@ -239,7 +287,8 @@
           const [syncStatus, setSyncStatus] = useState('');
           const [progress, setProgress] = useState(0);
           
-          const [seasonType, setSeasonType] = useState('view'); 
+          // 修改：如果是由「限時開啟」連結進入 (ENABLE_PRE_SCHEDULE 為 true)，預設顯示「預排表 (next)」，否則顯示「當季表 (view)」
+          const [seasonType, setSeasonType] = useState(ENABLE_PRE_SCHEDULE ? 'next' : 'view'); 
           const seasonLabels = useMemo(() => getSeasonLabels(), []);
 
           useEffect(() => {
@@ -280,6 +329,17 @@
             };
             loadAllData();
           }, [seasonType, seasonLabels]);
+
+          // 二重確保：如果 render 時沒抓到（例如 SSR 或特殊情況），在 mount 後再試一次
+          useEffect(() => {
+            if (!savedUser && currentView === 'login') {
+                const retrySavedUser = getLocalData('tbc_user');
+                if (retrySavedUser) {
+                    setName(retrySavedUser);
+                    setCurrentView('mySchedule');
+                }
+            }
+          }, []);
           
           const handleLogin = (e) => {
             e.preventDefault();
@@ -288,6 +348,7 @@
             
             const userExists = peopleData.some(p => p.name === trimmedName);
             if (userExists || peopleData.length === 0) {
+                setLocalData('tbc_user', trimmedName);
                 setCurrentView('mySchedule');
                 setLoginError('');
             } else {
@@ -296,6 +357,7 @@
           };
 
           const handleLogout = () => {
+            removeLocalData('tbc_user');
             setName('');
             setLoginError('');
             setSwapRequest(null);
@@ -515,6 +577,40 @@
             setFlatShifts(Array.from(shiftsMap.values()).sort((a, b) => a.dateObj - b.dateObj));
           }, [name, scheduleData]);
 
+          // --- 修改：改回 Google 行事曆連結 (不下載檔案)，並加入 ctz 修正時區 ---
+          const addToGoogleCalendar = (shift) => {
+             // 1. 取得年月日 (本地時間字串)
+             const year = shift.dateObj.getFullYear();
+             const month = String(shift.dateObj.getMonth() + 1).padStart(2, '0');
+             const day = String(shift.dateObj.getDate()).padStart(2, '0');
+             const dateStr = `${year}${month}${day}`;
+             
+             // 2. 設定時間
+             let startTime = '090000';
+             let endTime = '103000';
+             
+             const s = shift.session.toUpperCase();
+             if (s.includes('S1') || s.includes('第一堂')) { 
+                 startTime = '090000'; endTime = '103000'; 
+             } else if (s.includes('S2') || s.includes('第二堂')) { 
+                 startTime = '110000'; endTime = '123000'; 
+             } else if (s.includes('S3') || s.includes('第三堂')) { 
+                 startTime = '130000'; endTime = '143000'; 
+             }
+             
+             const start = `${dateStr}T${startTime}`;
+             const end = `${dateStr}T${endTime}`;
+             
+             const title = encodeURIComponent(`${shift.role}`);
+             const details = encodeURIComponent(`台中浸信會主日服事: ${shift.role}\n堂數: ${shift.session}`);
+             
+             // 3. 關鍵修正：加入 &ctz=Asia/Taipei 參數
+             // 這樣 Google 就會知道 "20240222T090000" 是台北時間，不會亂轉時區
+             const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&ctz=Asia/Taipei`;
+             
+             window.open(url, '_blank', 'noopener,noreferrer');
+          };
+
           return (
             <div className="min-h-screen bg-slate-50 flex flex-col">
               <nav className="bg-white sticky top-0 z-50 border-b border-slate-100 px-4 py-3 sm:px-6 sm:py-4 flex justify-between items-center shadow-sm">
@@ -595,9 +691,21 @@
                                 <span className="text-slate-300">|</span><span className="bg-slate-100 px-2 py-0.5 rounded text-xs">{shift.session}</span>
                              </div>
                           </div>
-                          <button onClick={() => onRequestSwap({ date: shift.date, role: shift.role, session: shift.rawSession, owner: name })} className="flex flex-col items-center justify-center gap-1 bg-white hover:bg-emerald-50 text-emerald-600 px-4 py-2 rounded-xl transition-all active:scale-95 border-2 border-emerald-100 flex-shrink-0 shadow-sm">
-                            <RefreshCw size={18} /><span className="text-[10px] font-bold">換班查詢</span>
-                          </button>
+                          
+                          {/* 右側按鈕區：改為 flex-col (上下排列) */}
+                          <div className="flex flex-col gap-2">
+                              {/* 加入行事曆按鈕 (僅在當季班表顯示) - 純文字版 */}
+                              {seasonType === 'view' && (
+                                <button onClick={() => addToGoogleCalendar(shift)} className="bg-white hover:bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg transition-all active:scale-95 border border-blue-200 flex-shrink-0 shadow-sm text-xs font-bold text-center whitespace-nowrap">
+                                    加入行事曆
+                                </button>
+                              )}
+
+                              {/* 換班查詢按鈕 - 純文字版 */}
+                              <button onClick={() => onRequestSwap({ date: shift.date, role: shift.role, session: shift.rawSession, owner: name })} className="bg-white hover:bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg transition-all active:scale-95 border border-emerald-200 flex-shrink-0 shadow-sm text-xs font-bold text-center whitespace-nowrap">
+                                換班查詢
+                              </button>
+                          </div>
                         </div>
                       );
                     })
