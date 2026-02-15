@@ -38,7 +38,7 @@
         window.onerror = function(msg, url, line, col, error) {
             const root = document.getElementById('root');
             if(root) {
-                root.innerHTML = `<div style="color:red; background:#fee; padding:20px; margin:20px;"><h3>❌ 錯誤</h3><p>${msg}</p></div>`;
+                root.innerHTML = `<div style="color:red; background:#fee; padding:20px; margin:20px; border-radius:10px; font-family:sans-serif;"><h3>❌ 應用程式錯誤</h3><p><strong>錯誤訊息:</strong> ${msg}</p><p>請檢查程式碼 import 是否完整。</p></div>`;
             }
             return false;
         };
@@ -47,10 +47,11 @@
     <script type="text/babel" data-type="module" data-presets="react">
         import React, { useState, useEffect, useMemo } from 'react';
         import { createRoot } from 'react-dom/client';
+        // 修正：補上 UserX
         import { 
           Calendar, User, LogOut, Heart, Monitor, Users, Smile, BookOpen, 
           Coffee, RefreshCw, AlertCircle, ArrowLeft, UserCheck, HandHeart, 
-          Clock, Briefcase, Info, Lock, Unlock, Link as LinkIcon, X, Timer
+          Clock, Briefcase, Info, Lock, Unlock, Link as LinkIcon, X, Timer, UserX
         } from 'lucide-react';
 
         const API_URL = "https://script.google.com/macros/s/AKfycbxjnNHK8QB8yW8rF_izV5SJBeZ0Go6KE13qzPX06d5knUV9VUK6WsPtI5h5n79ujPVFOA/exec";
@@ -243,14 +244,7 @@
 
           useEffect(() => {
             const loadAllData = async () => {
-              // 這裡保持不手動清空 data，因為我們會用 isSyncing 狀態來控制畫面顯示
-              
               setIsSyncing(true);
-              // 移除原本的詳細載入文字設定
-              // const seasonName = seasonType === 'view' ? seasonLabels.current : seasonLabels.next;
-              // const typeName = seasonType === 'view' ? '服事表' : '預排表';
-              // setSyncStatus(`載入 ${seasonName} ${typeName}...`);
-              
               setProgress(10);
 
               try {
@@ -311,7 +305,6 @@
           const renderView = () => {
             switch (currentView) {
               case 'login': return <LoginView name={name} setName={setName} onLogin={handleLogin} loginError={loginError} isSyncing={isSyncing} syncStatus={syncStatus} progress={progress} seasonType={seasonType} setSeasonType={setSeasonType} seasonLabels={seasonLabels} />;
-              // 傳遞 syncStatus 和 progress 給 MyScheduleView
               case 'mySchedule': return <MyScheduleView name={name} scheduleData={scheduleData} peopleData={peopleData} onLogout={handleLogout} onRequestSwap={(req) => { setSwapRequest(req); setCurrentView('swapSearch'); }} seasonType={seasonType} setSeasonType={setSeasonType} isSyncing={isSyncing} syncStatus={syncStatus} progress={progress} seasonLabels={seasonLabels} />;
               case 'swapSearch': return <SwapSearchView name={name} scheduleData={scheduleData} peopleData={peopleData} statsData={statsData} onBack={() => setCurrentView('mySchedule')} onLogout={handleLogout} initialRequest={swapRequest} seasonType={seasonType} seasonLabels={seasonLabels} />;
               default: return <LoginView name={name} setName={setName} onLogin={handleLogin} />;
@@ -390,7 +383,7 @@
           const handleLogoClick = () => {
               setLogoClicks(prev => {
                   const newCount = prev + 1;
-                  if (newCount >= 3) { // 修正為 3 次
+                  if (newCount >= 3) {
                       setShowAdmin(true);
                       return 0;
                   }
@@ -532,7 +525,6 @@
                   <div className="flex flex-col">
                       <div className="flex items-center gap-2">
                           <p className="text-[10px] text-slate-400 font-bold uppercase">System User</p>
-                          {/* 內頁季別切換 (顯示月份) - 依據 ENABLE_PRE_SCHEDULE 決定是否顯示 */}
                           {ENABLE_PRE_SCHEDULE && (
                               <button 
                                 onClick={() => setSeasonType(seasonType === 'view' ? 'next' : 'view')}
@@ -579,7 +571,6 @@
                              <div className={`absolute inset-0 flex items-center justify-center text-xs font-black ${seasonType === 'view' ? 'text-indigo-500' : 'text-emerald-500'}`}>{progress}%</div>
                         </div>
                         
-                        {/* 修改：移除下方的 p 標籤，並增加 mb-6 保持間距 */}
                         <h3 className="text-lg font-black text-slate-800 mb-6">資料載入中</h3>
                         
                         <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
@@ -710,11 +701,11 @@
                    <div className="flex items-center gap-4">
                       <div className="bg-indigo-50 p-4 rounded-2xl text-indigo-600"><Calendar size={28} /></div>
                       <div>
-                         <p className="text-2xl font-black text-slate-800">{normalizeDateStr(selectedDate)}</p>
-                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-sm font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">{selectedRole}</span>
-                            {selectedRole !== '執事輪值' && <span className="text-sm font-bold text-slate-400">• {selectedSession}</span>}
-                         </div>
+                          <p className="text-2xl font-black text-slate-800">{normalizeDateStr(selectedDate)}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                             <span className="text-sm font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">{selectedRole}</span>
+                             {selectedRole !== '執事輪值' && <span className="text-sm font-bold text-slate-400">• {selectedSession}</span>}
+                          </div>
                       </div>
                    </div>
                 </div>
