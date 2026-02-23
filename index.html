@@ -488,20 +488,22 @@
                     <div>主日服事查詢系統</div>
                   </h2>
                   
-                  {ENABLE_PRE_SCHEDULE && (
+                 {ENABLE_PRE_SCHEDULE && (
                     <div className="mt-6 flex justify-center">
                         <div className="bg-slate-100 p-1.5 rounded-xl inline-flex relative">
                             <button 
                                 onClick={() => setSeasonType('view')}
-                                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${seasonType === 'view' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 flex flex-col items-center justify-center leading-tight ${seasonType === 'view' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                             >
-                                {seasonLabels.current} 服事表
+                                <span>{seasonLabels.current}</span>
+                                <span>服事表</span>
                             </button>
                             <button 
                                 onClick={() => setSeasonType('next')}
-                                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 ${seasonType === 'next' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 flex flex-col items-center justify-center leading-tight ${seasonType === 'next' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                             >
-                                {seasonLabels.next} 預排表
+                                <span>{seasonLabels.next}</span>
+                                <span>預排表</span>
                             </button>
                         </div>
                     </div>
