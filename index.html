@@ -488,7 +488,7 @@
                     <div>主日服事查詢系統</div>
                   </h2>
                   
-                 {ENABLE_PRE_SCHEDULE && (
+                  {ENABLE_PRE_SCHEDULE && (
                     <div className="mt-6 flex justify-center">
                         <div className="bg-slate-100 p-1.5 rounded-xl inline-flex relative">
                             <button 
@@ -776,6 +776,15 @@
               if (!person.roles[initialRequest.role]) return;
               if (initialRequest.role !== '執事輪值' && person.session !== '皆可' && !person.session.includes(initialRequest.session)) return;
               
+              // --- 新增：檢查該日期是否在人員的「不能參與」清單中 ---
+              const isUnavailable = String(person.unavailable).split(/,|、|，|\n/).some(dStr => {
+                  const cleanStr = dStr.trim();
+                  if (!cleanStr) return false;
+                  // 正規化日期 (去除開頭的0) 進行精準備對，或者包容性字串比對
+                  return normalizeDateStr(cleanStr) === targetDateNorm || cleanStr.includes(initialRequest.date);
+              });
+              if (isUnavailable) return; // 如果在不能參與名單內，就跳過此人
+
               let isBusy = false;
               schedulesOnDate.forEach(s => {
                  if(Object.values(s).some(v => String(v).includes(person.name))) isBusy = true;
