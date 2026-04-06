@@ -287,7 +287,7 @@
           const [syncStatus, setSyncStatus] = useState('');
           const [progress, setProgress] = useState(0);
           
-          // 修改：如果是由「限時開啟」連結進入 (ENABLE_PRE_SCHEDULE 為 true)，預設顯示「預排表 (next)」，否則顯示「當季表 (view)」
+          // 如果是由「限時開啟」連結進入，預設顯示「預排表 (next)」，否則顯示「當季表 (view)」
           const [seasonType, setSeasonType] = useState(ENABLE_PRE_SCHEDULE ? 'next' : 'view'); 
           const seasonLabels = useMemo(() => getSeasonLabels(), []);
 
@@ -382,7 +382,7 @@
 
             const baseUrl = window.location.href.split('?')[0];
             
-            // 修改：產生季末 (3/31, 6/30, 9/30, 12/31) 自動關閉連結
+            // 產生季末 (3/31, 6/30, 9/30, 12/31) 自動關閉連結
             const generateQuarterlyLink = () => {
                 const now = new Date();
                 const currentMonth = now.getMonth(); // 0-11
@@ -393,15 +393,14 @@
                 let targetMonth = quarters.find(m => m >= currentMonth);
                 let targetYear = currentYear;
 
-                // 防呆：如果都沒找到 (理論上不會，因為 11 >= 11)，預設為明年3月
+                // 防呆：如果都沒找到，預設為明年3月
                 if (targetMonth === undefined) {
                     targetMonth = 2;
                     targetYear++;
                 }
 
-                // 計算該月最後一天：下個月的第 0 天
+                // 計算該月最後一天
                 const expirationDate = new Date(targetYear, targetMonth + 1, 0);
-                // 設定為當天最後一秒 23:59:59
                 expirationDate.setHours(23, 59, 59, 999);
                 const timestamp = expirationDate.getTime();
                 
@@ -420,7 +419,6 @@
                 navigator.clipboard.writeText(url).then(() => alert(`連結已複製！\n此連結將於 [${dateStr}] 自動失效。`));
             };
             
-            // 為了顯示在畫面上，即時計算一下目前的季末日期
             const { dateStr: displayDate } = generateQuarterlyLink();
 
             return (
@@ -455,7 +453,6 @@
 
         // --- Views ---
         function LoginView({ name, setName, onLogin, loginError, isSyncing, syncStatus, progress, seasonType, setSeasonType, seasonLabels }) {
-          // 管理員密技：點擊 LOGO 3次開啟管理選單
           const [logoClicks, setLogoClicks] = useState(0);
           const [showAdmin, setShowAdmin] = useState(false);
 
@@ -599,15 +596,13 @@
             setFlatShifts(Array.from(shiftsMap.values()).sort((a, b) => a.dateObj - b.dateObj));
           }, [name, scheduleData]);
 
-          // --- 修改：改回 Google 行事曆連結 (不下載檔案)，並加入 ctz 修正時區 ---
+          // --- Google 行事曆連結 (不下載檔案)，並加入 ctz 修正時區 ---
           const addToGoogleCalendar = (shift) => {
-             // 1. 取得年月日 (本地時間字串)
              const year = shift.dateObj.getFullYear();
              const month = String(shift.dateObj.getMonth() + 1).padStart(2, '0');
              const day = String(shift.dateObj.getDate()).padStart(2, '0');
              const dateStr = `${year}${month}${day}`;
              
-             // 2. 設定時間
              let startTime = '090000';
              let endTime = '103000';
              
@@ -626,8 +621,6 @@
              const title = encodeURIComponent(`${shift.role}`);
              const details = encodeURIComponent(`台中浸信會主日服事: ${shift.role}\n堂數: ${shift.session}`);
              
-             // 3. 關鍵修正：加入 &ctz=Asia/Taipei 參數
-             // 這樣 Google 就會知道 "20240222T090000" 是台北時間，不會亂轉時區
              const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&ctz=Asia/Taipei`;
              
              window.open(url, '_blank', 'noopener,noreferrer');
@@ -714,16 +707,16 @@
                              </div>
                           </div>
                           
-                          {/* 右側按鈕區：改為 flex-col (上下排列) */}
+                          {/* 右側按鈕區：flex-col (上下排列) */}
                           <div className="flex flex-col gap-2">
-                              {/* 加入行事曆按鈕 (僅在當季班表顯示) - 純文字版 */}
+                              {/* 加入行事曆按鈕 (僅在當季班表顯示) */}
                               {seasonType === 'view' && (
                                 <button onClick={() => addToGoogleCalendar(shift)} className="bg-white hover:bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg transition-all active:scale-95 border border-blue-200 flex-shrink-0 shadow-sm text-xs font-bold text-center whitespace-nowrap">
                                     加入行事曆
                                 </button>
                               )}
 
-                              {/* 換班查詢按鈕 - 純文字版 */}
+                              {/* 換班查詢按鈕 */}
                               <button onClick={() => onRequestSwap({ date: shift.date, role: shift.role, session: shift.rawSession, owner: name })} className="bg-white hover:bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg transition-all active:scale-95 border border-emerald-200 flex-shrink-0 shadow-sm text-xs font-bold text-center whitespace-nowrap">
                                 換班查詢
                               </button>
@@ -776,14 +769,13 @@
               if (!person.roles[initialRequest.role]) return;
               if (initialRequest.role !== '執事輪值' && person.session !== '皆可' && !person.session.includes(initialRequest.session)) return;
               
-              // --- 新增：檢查該日期是否在人員的「不能參與」清單中 ---
+              // 檢查推薦人本身這天是否請假
               const isUnavailable = String(person.unavailable).split(/,|、|，|\n/).some(dStr => {
                   const cleanStr = dStr.trim();
                   if (!cleanStr) return false;
-                  // 正規化日期 (去除開頭的0) 進行精準備對，或者包容性字串比對
                   return normalizeDateStr(cleanStr) === targetDateNorm || cleanStr.includes(initialRequest.date);
               });
-              if (isUnavailable) return; // 如果在不能參與名單內，就跳過此人
+              if (isUnavailable) return; 
 
               let isBusy = false;
               schedulesOnDate.forEach(s => {
@@ -801,6 +793,17 @@
                  if(rDateObj < today) return;
 
                  if(rDate === targetDateNorm || requesterBusyDates.has(rDate)) return;
+
+                 // 比對申請人那天是否剛好「不能參與 (不可排班)」
+                 if (requester && requester.unavailable) {
+                     const isRequesterUnavailable = String(requester.unavailable).split(/,|、|，|\n/).some(dStr => {
+                         const cleanStr = dStr.trim();
+                         if (!cleanStr) return false;
+                         return normalizeDateStr(cleanStr) === rDate || cleanStr.includes(rDate);
+                     });
+                     if (isRequesterUnavailable) return; 
+                 }
+
                  let roleOnDay = null;
                  Object.entries(row).forEach(([k, v]) => {
                     if(['日期','堂別'].includes(k)) return;
